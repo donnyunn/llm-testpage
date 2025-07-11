@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPA AI Admin</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px;   line-height: 1.6; }
+        h1, h2 { color: #333; }
+        div { margin-top: 20px; padding: 15px; border: 1px solid #eee; background-color: #f9f9f9; }
+        select { padding: 8px; font-size: 1em; }
+    </style>
+</head>
+<body>
+    <h1>모델 학습 & 튜닝</h1>
+    
+    <label for="learningTypeSelect">학습 유형 선택:</label>
+    <select id="learningTypeSelect">
+        <option value="training-test">모델 학습 테스트</option>
+        <option value="text-to-sql">Text-To-SQL</option>
+        <option value="oa-qna">OA Q&A</option>
+    </select>
+
+    <div id="dynamicViewArea">
+        <p>test message</p>
+    </div>
+
+    <script>
+        const selectElement = document.getElementById('learningTypeSelect');
+        const dynamicViewArea = document.getElementById('dynamicViewArea');
+
+        async function updateView() {
+            const selectedValue = selectElement.value;
+            let viewFileName = '';
+
+            if (selectedValue === 'training-test') {
+                viewFileName = 'training_test_view';
+            } else if (selectedValue === 'text-to-sql') {
+                viewFileName = 'text_to_sql_view';
+            } else if (selectedValue === 'oa-qna') {
+                viewFileName = 'oa_qna_view';
+            } else {
+                dynamicViewArea.innerHTML = '<p>학습 유형을 선택해주세요.</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/views/${viewFileName}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const htmlContent = await response.text();
+                dynamicViewArea.innerHTML = htmlContent;
+                console.log(`${dynamicViewArea.innerHTML}`);
+
+            } catch (error) {
+                console.error('뷰를 로드하는 중 오류 발생:', error);
+                dynamicViewArea.innerHTML = `<p style="color: red;">뷰 로드 중 오류 발생: ${error.message}</p>`;
+            }
+        }
+
+        selectElement.addEventListener('change', updateView);
+        updateView();
+    </script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<div>
+    <h2>모델 학습 테스트</h2>
+    <p>버튼을 눌러 AI 모델 학습을 시작합니다. 이 과정은 매우 오래 걸릴 수 있습니다.</p>
+
+    <button id="startTrainingButton">학습 시작</button>
+    <p id="trainingStatus" style="margin-top: 10px; font-weight: bold;">대기 중</p>
+
+    <h3>학습 결과 (로그):</h3>
+    <pre id="trainingLogs" style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; overflow-x: auto; white-space: pre-wrap;"></pre>
+
+    <script>
+        console.log("training_test_view.html 스크립트 로드됨.");
+
+        const startTrainingButton = document.getElementById('startTrainingButton');
+        const trainingStatus = document.getElementById('trainingStatus');
+        const trainingLogs = document.getElementById('trainingLogs');
+
+        // 각 요소가 제대로 찾아졌는지 확인하는 로그 (가장 흔한 문제)
+        if (!startTrainingButton) { console.error("오류: 'startTrainingButton' ID를 가진 요소를 찾을 수 없습니다."); }
+        if (!trainingStatus) { console.error("오류: 'trainingStatus' ID를 가진 요소를 찾을 수 없습니다."); }
+        if (!trainingLogs) { console.error("오류: 'trainingLogs' ID를 가진 요소를 찾을 수 없습니다."); }
+
+        startTrainingButton.addEventListener('click', async function() {
+            console.log("학습 시작 버튼 클릭됨.");
+
+            trainingStatus.textContent = "학습 시작 중... 잠시 기다려주세요. (이 과정은 매우 오래 걸릴 수 있습니다.)";
+            trainingStatus.style.color = '#007bff';
+            trainingLogs.textContent = "서버로부터 응답 대기 중...";
+            startTrainingButton.disabled = true; // 학습 시작 버튼 비활성화
+
+            try {
+                console.log("서버로 POST 요청 전송 시도: /start_training_test");
+                const response = await fetch('/start_training_test', {
+                    method: 'POST', // POST 요청
+                    headers: {
+                        'Content-Type': 'application/json', // JSON 형식으로 데이터를 보낼 것이 없지만, POST 요청 기본값
+                    },
+                    body: JSON.stringify({}) // 빈 JSON 객체 전송
+                });
+                console.log("서버 응답 받음:", response); // 서버 응답 로그
+
+                const data = await response.json(); // 서버 응답을 JSON으로 파싱
+                console.log("서버 응답 데이터:", data); 
+
+                if (response.ok && data.status === 'success') {
+                    trainingStatus.textContent = "학습이 성공적으로 완료되었습니다!";
+                    trainingStatus.style.color = 'green';
+                    trainingLogs.textContent = data.logs; // 학습 로그 표시
+                } else {
+                    trainingStatus.textContent = "학습 실패!";
+                    trainingStatus.style.color = 'red';
+                    trainingLogs.textContent = data.logs || "자세한 로그 없음."; // 실패 로그 표시
+                }
+            } catch (error) {
+                console.error("fetch 요청 또는 JSON 파싱 중 오류 발생:", error);
+                trainingStatus.textContent = "네트워크 오류 또는 서버 응답 없음!";
+                trainingStatus.style.color = 'red';
+                trainingLogs.textContent = '오류: ' + error.message;
+            } finally {
+                startTrainingButton.disabled = false; // 버튼 다시 활성화
+            }
+        });
+    </script>
+</div>

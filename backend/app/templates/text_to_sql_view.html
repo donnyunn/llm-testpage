@@ -1,0 +1,93 @@
+<div>
+    <h2>텍스트 투 SQL 학습/추론 테스트 화면</h2>
+    <p>모델이 주어진 스키마와 질문을 기반으로 SQL 쿼리를 생성하는지 테스트합니다.</p>
+
+    <form id="textToSqlInferenceForm">
+        <label for="modelIdInput">기반 모델 ID (또는 학습된 모델 경로):</label>
+        <input type="text" id="modelIdInput" value="google/gemma-7b-it" required>
+        <p style="font-size: 0.8em; color: gray;">
+            (예: <code>google/gemma-7b-it</code> 또는 학습 완료 모델 경로 <code>peft_250502_v1_merged</code>)
+        </p>
+
+        <label for="questionInput">질문 (자연어):</label>
+        <textarea id="questionInput" rows="3" required>직원별 총 판매액을 보여줘</textarea>
+
+        <label for="schemaInput">스키마 (CREATE TABLE 문):</label>
+        <textarea id="schemaInput" rows="8" required>
+CREATE TABLE Employees (
+    employee_id INT PRIMARY KEY,
+    name VARCHAR(255),
+    department VARCHAR(255),
+    salary INT
+);
+CREATE TABLE Sales (
+    sale_id INT PRIMARY KEY,
+    employee_id INT,
+    product VARCHAR(255),
+    amount INT,
+    sale_date DATE
+);
+        </textarea>
+
+        <button type="submit">추론 실행</button>
+        <p id="statusMessage" style="margin-top: 10px; font-weight: bold;"></p>
+    </form>
+
+    <h3>추론 결과:</h3>
+    <pre id="resultOutput" style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; overflow-x: auto; white-space: pre-wrap;"></pre>
+
+    <script>
+        // DOM 요소 가져오기
+        const form = document.getElementById('textToSqlInferenceForm');
+        const modelIdInput = document.getElementById('modelIdInput');
+        const questionInput = document.getElementById('questionInput');
+        const schemaInput = document.getElementById('schemaInput');
+        const statusMessage = document.getElementById('statusMessage');
+        const resultOutput = document.getElementById('resultOutput');
+
+        // 폼 제출 이벤트 리스너
+        form.addEventListener('submit', async function(event) {
+            event.preventDefault(); // 폼의 기본 제출 동작(페이지 새로고침) 방지
+
+            const modelId = modelIdInput.value;
+            const question = questionInput.value;
+            const schema = schemaInput.value;
+
+            statusMessage.textContent = "모델 추론 중입니다... 잠시 기다려주세요.";
+            statusMessage.style.color = '#007bff'; // 진행 중 색상
+            resultOutput.textContent = "Loading...";
+
+            try {
+                // FastAPI 백엔드의 /run_inference 엔드포인트로 POST 요청 전송
+                const response = await fetch('/run_inference', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    // 요청 본문(body)에 JSON 형식으로 데이터 전송
+                    body: JSON.stringify({
+                        model_id: modelId,
+                        question: question,
+                        schema_info: schema // FastAPI에서 'schema_info'로 인자를 받도록 설정했음
+                    })
+                });
+
+                const data = await response.json(); // 서버 응답을 JSON으로 파싱
+
+                if (response.ok) { // HTTP 상태 코드가 200번대인 경우
+                    resultOutput.textContent = data.predicted_sql;
+                    statusMessage.textContent = "추론 성공!";
+                    statusMessage.style.color = 'green';
+                } else { // HTTP 상태 코드가 에러인 경우 (예: 500)
+                    resultOutput.textContent = '오류: ' + (data.detail || JSON.stringify(data));
+                    statusMessage.textContent = "추론 실패!";
+                    statusMessage.style.color = 'red';
+                }
+            } catch (error) { // 네트워크 오류 등 예외 발생 시
+                resultOutput.textContent = '네트워크 오류 또는 서버 응답 없음: ' + error.message;
+                statusMessage.textContent = "네트워크 오류 발생!";
+                statusMessage.style.color = 'red';
+            }
+        });
+    </script>
+</div>
