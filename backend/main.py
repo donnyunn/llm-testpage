@@ -10,6 +10,7 @@ from models_ml.eval_data import run_inference
 import pandas as pd
 import json
 import gc
+import datetime
 
 app = FastAPI()
 
@@ -28,6 +29,24 @@ app.add_middleware(
 
 class TrainingRequest(BaseModel):
     model_id: str = 'TinyLlama/TinyLlama-1.1B-Chat-v1.0'
+    system_message: str
+
+class TrainingRequest(BaseModel):
+    model_id: str
+    system_message: str
+    load_in_4bit: bool = True
+    bnb_4bit_compute_dtype: str = 'bfloat16'
+    attn_implementation: str = 'eager'
+    lora_alpha: int = 128
+    lora_dropout: float = 0.05
+    lora_r: int = 64
+    lora_target_modules: str = 'all-linear'
+    train_batch_size: int = 1
+    gradient_accumulation_steps: int = 4
+    num_train_epochs: int = 10
+    learning_rate: float = 2e-4
+    lr_scheduler_type: str = 'constant'
+    optim: str = 'adamw_torch_fused'
 
 class InferenceRequest(BaseModel):
     model_id: str
@@ -48,12 +67,13 @@ class NewDataEntry(BaseModel):
 class DeleteRequest(BaseModel):
     id: int
 
-class HuggingFaceLoginRequest(BaseModel):
-    hf_token: str
-
 UPLOAD_FOLDER = "models_ml/data"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 FILE_PATH = os.path.join(UPLOAD_FOLDER, "uploaded_data.xlsx")
+
+OUTPUT_BASE_DIR = "models_ml/outputs"
+os.makedirs(os.path.join(OUTPUT_BASE_DIR, "adapters"), exist_ok=True)
+os.makedirs(os.path.join(OUTPUT_BASE_DIR, "merged"), exist_ok=True)
 
 def read_excel_file():
     if not os.path.exists(FILE_PATH):
@@ -134,21 +154,37 @@ async def delete_data(request: DeleteRequest):
     else:
         raise HTTPException(status_code=404, detail=f"삭제할 데이터를 찾을 수 없습니다. (ID: {request.id})")
 
-@app.post("/huggingface/login")
-async def huggingface_login(request: HuggingFaceLoginRequest):
-    try:
-        login(token=request.hf_token, add_to_git_credential=True)
-        return {"status": "success", "message": "HuggingFace 로그인 성공."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"HuggingFace 로그인 실패: {e}")
-
 @app.post("/start_training_test")
 async def start_training_test(request_data: TrainingRequest):
     try:
+        data_file_path = "models_ml/data/uploaded_data.xlsx"
+
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        job_id = f"job-{timestamp}"
+        adapter_output_dir = os.path.join(OUTPUT_BASE_DIR, "adapters", job_id)
+        merged_output_dir = os.path.join(OUTPUT_BASE_DIR, "merged", job_id)
+
         command = [
             "python3", 
             "models_ml/train_data.py",
             "--model_id", request_data.model_id,
+            "--system_message", request_data.system_message,
+            "--adapter_output_dir", adapter_output_dir, 
+            "--merged_output_dir", merged_output_dir,   
+            "--data_file_path", data_file_path,
+            "--load_in_4bit", str(request_data.load_in_4bit),
+            "--bnb_4bit_compute_dtype", request_data.bnb_4bit_compute_dtype,
+            "--attn_implementation", request_data.attn_implementation,
+            "--lora_alpha", str(request_data.lora_alpha),
+            "--lora_dropout", str(request_data.lora_dropout),
+            "--lora_r", str(request_data.lora_r),
+            "--lora_target_modules", request_data.lora_target_modules,
+            "--per_device_train_batch_size", str(request_data.train_batch_size),
+            "--gradient_accumulation_steps", str(request_data.gradient_accumulation_steps),
+            "--num_train_epochs", str(request_data.num_train_epochs),
+            "--learning_rate", str(request_data.learning_rate),
+            "--lr_scheduler_type", request_data.lr_scheduler_type,
+            "--optim", request_data.optim,
         ]
         process = subprocess.run(
             command,
@@ -167,7 +203,7 @@ async def start_training_test(request_data: TrainingRequest):
             raise HTTPException(status_code=500, detail=f"학습 중 오류 발생: {error_output}")
     except Exception as e:
         print(f"Server error: {e}")
-        raise HTTPException(status_code=500, detail=f"서버 오류: {std(e)}")
+        raise HTTPException(status_code=500, detail=f"서버 오류: {e}")
 
 @app.post("/run_inference")
 async def execute_inference(request_data: InferenceRequest):
@@ -180,3 +216,14 @@ async def execute_inference(request_data: InferenceRequest):
         return {"status": "success", "predicted_sql": predicted_sql}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
+
+class HuggingFaceLoginRequest(BaseModel):
+    hf_token: str
+
+@app.post("/huggingface/login")
+async def huggingface_login(request: HuggingFaceLoginRequest):
+    try:
+        login(token=request.hf_token, add_to_git_credential=True)
+        return {"status": "success", "message": "HuggingFace 로그인 성공."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"HuggingFace 로그인 실패: {e}")

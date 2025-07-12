@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 
 const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
   const [modelId, setModelId] = useState('TinyLlama/TinyLlama-1.1B-Chat-v1.0'); // 초기값
+  const [systemMessage, setSystemMessage] = useState(`You are an text to SQL query translator. Users will ask you questions and you will generate a SQL query based on the provided SCHEMA.\nSCHEMA:\n{schema}`);
+
   const [trainingStatus, setTrainingStatus] = useState('');
   const [trainingLogs, setTrainingLogs] = useState('');
   const [isError, setIsError] = useState(false);
@@ -15,7 +17,27 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
   const [editingIndex, setEditingIndex] = useState(null);
 
   const tableColumns = ['question', 'answer', 'schema'];
-  const allColumns = ['id', ...tableColumns]; // 내부적으로 id도 관리
+  
+  // 학습 파라미터 상태 변수들
+  // 1. 성능 최적화
+  const [loadIn4bit, setLoadIn4bit] = useState(true);
+  const [bnb4bitComputeDtype, setBnb4bitComputeDtype] = useState('bfloat16');
+  const [attnImplementation, setAttnImplementation] = useState('eager');
+  
+  // 2. PEFT (LoRA) 설정
+  const [loraAlpha, setLoraAlpha] = useState(128);
+  const [loraDropout, setLoraDropout] = useState(0.05);
+  const [loraR, setLoraR] = useState(64);
+  const [loraTargetModules, setLoraTargetModules] = useState('all-linear');
+  
+  // 3. 학습 인자
+  const [trainBatchSize, setTrainBatchSize] = useState(1);
+  const [gradientAccumulationSteps, setGradientAccumulationSteps] = useState(4);
+  const [numTrainEpochs, setNumTrainEpochs] = useState(10);
+  const [learningRate, setLearningRate] = useState(2e-4);
+  const [lrSchedulerType, setLrSchedulerType] = useState('constant');
+  const [optim, setOptim] = useState('adamw_torch_fused');
+  // 여기까지
 
   const handleModelIdChange = (event) => {
     setModelId(event.target.value);
@@ -92,15 +114,32 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
     console.log('학습 시작 버튼 클릭');
     console.log('선택된 모델 ID:', modelId);
 
+    const trainingParams = {
+      model_id: modelId,
+      system_message: systemMessage,
+      load_in_4bit: loadIn4bit,
+      bnb_4bit_compute_dtype: bnb4bitComputeDtype,
+      attn_implementation: attnImplementation,
+      lora_alpha: loraAlpha,
+      lora_dropout: loraDropout,
+      lora_r: loraR,
+      lora_target_modules: loraTargetModules,
+      train_batch_size: trainBatchSize,
+      gradient_accumulation_steps: gradientAccumulationSteps,
+      num_train_epochs: numTrainEpochs,
+      learning_rate: learningRate,
+      lr_scheduler_type: lrSchedulerType,
+      optim: optim,
+    };
+    console.log("전송할 학습 파라미터:", trainingParams);
+
     try {
       const response = await fetch(`${fastapiBaseUrl}/start_training_test` , {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model_id: modelId,
-        }),
+        body: JSON.stringify(trainingParams),
       });
 
       const data = await response.json();
@@ -196,108 +235,253 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
 
       {/* --- 1. 핵심 설정 섹션 --- */}
       <div className="setting-group">
-          <h3>1. 핵심 설정</h3>
-          <div className="form-item">
-              <label htmlFor="model-id">어떤 모델로 학습할지 선택 (Model ID):</label>
-              <input
-                  type="text"
-                  id="model-id"
-                  value={modelId} // modelId state와 입력 필드를 연결합니다.
-                  onChange={handleModelIdChange} // 입력 값이 변경될 때 state를 업데이트합니다.
-                  placeholder="예: google/gemma-7b-it"
-                  style={{ width: '300px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
-              />
-          </div>
+        <h3>1. 핵심 설정</h3>
+        <div className="form-item">
+          <h4>모델 선택</h4>
+          <label htmlFor="model-id">어떤 모델로 학습할지 선택 (Model ID):</label>
+          <input
+              type="text"
+              id="model-id"
+              value={modelId} // modelId state와 입력 필드를 연결합니다.
+              onChange={handleModelIdChange} // 입력 값이 변경될 때 state를 업데이트합니다.
+              placeholder="예: google/gemma-7b-it"
+              style={{ width: '300px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+          />
+        </div>
+          <h4>시스템 메시지</h4>
+          <p>AI 모델의 역할을 정의하는 메시지를 입력하세요. `{'{schema}'}`는 자동으로 대체됩니다.</p>
+          <textarea
+            value={systemMessage}
+            onChange={(e) => setSystemMessage(e.target.value)}
+            rows="5"
+            style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+          />
       </div>
 
       {/* 2. 데이터 업로드 섹션 추가 */}
-      <div style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
-        <h3>2. 학습 데이터 업로드</h3>
-        <p>학습에 사용할 .xlsx 파일을 업로드하세요. (헤더: question, answer, schema)</p>
-        <input
-          type="file"
-          accept=".xlsx"
-          onChange={handleFileChange}
-          style={{ display: 'block', marginBottom: '10px' }}
-        />
-        <button
-          onClick={handleFileUpload}
-          style={{
-            padding: '8px 15px',
-            backgroundColor: '#28a745',
-            color: 'white',
-            border: 'none',
-            borderRadius: '5px',
-            cursor: 'pointer',
-          }}
-        >
-          파일 업로드
-        </button>
-        {uploadStatus && (
-          <p style={{ marginTop: '10px', color: uploadStatus.includes('실패') ? 'red' : 'blue', fontWeight: 'bold' }}>
-            {uploadStatus}
-          </p>
-        )}
-      </div>
+      <h3>2. 학습 데이터 업로드</h3>
+      <p>학습에 사용할 .xlsx 파일을 업로드하세요. (헤더: question, answer, schema)</p>
+      <input
+        type="file"
+        accept=".xlsx"
+        onChange={handleFileChange}
+        style={{ display: 'block', marginBottom: '10px' }}
+      />
+      <button
+        onClick={handleFileUpload}
+        style={{
+          padding: '8px 15px',
+          backgroundColor: '#28a745',
+          color: 'white',
+          border: 'none',
+          borderRadius: '5px',
+          cursor: 'pointer',
+        }}
+      >
+        파일 업로드
+      </button>
+      {uploadStatus && (
+        <p style={{ marginTop: '10px', color: uploadStatus.includes('실패') ? 'red' : 'blue', fontWeight: 'bold' }}>
+          {uploadStatus}
+        </p>
+      )}
 
       {/* 3. 데이터 테이블 섹션 추가 */}
-      <div style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
-        <h3>3. 학습 데이터 목록</h3>
-        <button onClick={handleAddEntry} style={{ marginBottom: '15px' }}>
-          새 데이터 추가
-        </button>
-        {isLoadingData ? (
-          <p>데이터를 불러오는 중...</p>
-        ) : dataEntries.length > 0 ? (
-          <div style={{ maxHeight: '1000px', overflowY: 'auto', overflowX: 'auto', border: '1px solid #ccc', borderRadius: '5px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={{ backgroundColor: '#f2f2f2' }}>
-                <tr>
-                  {tableColumns.map(key => (
-                    <th key={key} style={{ padding: '8px', border: '1px solid #ddd' }}>{key}</th>
-                  ))}
-                  <th style={{ padding: '8px', border: '1px solid #ddd' }}>액션</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dataEntries.map((entry, index) => (
-                  <tr key={typeof entry.id === 'number' ? entry.id : `new-${index}`}>
-                    {tableColumns.map((key) => (
-                      <td key={key} style={{ padding: '8px', border: '1px solid #ddd', verticalAlign: 'top', whiteSpace: 'pre-wrap' }}>
-                        {editingIndex === index ? (
-                          <textarea
-                            value={entry[key] || ''}
-                            onChange={(e) => handleEditChange(index, key, e.target.value)}
-                            style={{ width: '100%', minHeight: '50px', boxSizing: 'border-box' }}
-                          />
-                        ) : (
-                          entry[key]
-                        )}
-                      </td>
-                    ))}
-                    <td style={{ padding: '8px', border: '1px solid #ddd' }}>
+      <h3>3. 학습 데이터 목록</h3>
+      <button onClick={handleAddEntry} style={{ marginBottom: '15px', background: 'lightgray'}}>
+        새 데이터 추가
+      </button>
+      {isLoadingData ? (
+        <p>데이터를 불러오는 중...</p>
+      ) : dataEntries.length > 0 ? (
+        <div style={{ maxHeight: '1000px', overflowY: 'auto', overflowX: 'auto', border: '1px solid #ccc', borderRadius: '5px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ backgroundColor: '#f2f2f2' }}>
+              <tr>
+                {tableColumns.map(key => (
+                  <th key={key} style={{ padding: '8px', border: '1px solid #ddd' }}>{key}</th>
+                ))}
+                <th style={{ padding: '8px', border: '1px solid #ddd' }}>액션</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dataEntries.map((entry, index) => (
+                <tr key={typeof entry.id === 'number' ? entry.id : `new-${index}`}>
+                  {tableColumns.map((key) => (
+                    <td key={key} style={{ padding: '8px', border: '1px solid #ddd', verticalAlign: 'top', whiteSpace: 'pre-wrap' }}>
                       {editingIndex === index ? (
-                        <button onClick={() => handleSave(index)}>저장</button>
+                        <textarea
+                          value={entry[key] || ''}
+                          onChange={(e) => handleEditChange(index, key, e.target.value)}
+                          style={{ width: '100%', minHeight: '50px', boxSizing: 'border-box' }}
+                        />
                       ) : (
-                        <>
-                          <button onClick={() => setEditingIndex(index)}>편집</button>
-                          <button onClick={() => handleDelete(index)} style={{ marginLeft: '5px', backgroundColor: 'red', color: 'white' }}>삭제</button>
-                        </>
+                        entry[key]
                       )}
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p>업로드된 학습 데이터가 없습니다.</p>
-        )}
+                  ))}
+                  <td style={{ padding: '8px', border: '1px solid #ddd' }}>
+                    {editingIndex === index ? (
+                      <button onClick={() => handleSave(index)}>저장</button>
+                    ) : (
+                      <>
+                        <button onClick={() => setEditingIndex(index)} style={{marginLeft: '5px', backgroundColor: 'lightgray'}}>편집</button>
+                        <button onClick={() => handleDelete(index)} style={{ marginLeft: '5px', backgroundColor: 'pink' }}>삭제</button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p>업로드된 학습 데이터가 없습니다.</p>
+      )}
+
+      {/* --- 4. 성능 최적화 설정 섹션 --- */}
+      <h3>4. 성능 최적화 설정</h3>
+      <div style={{display: 'flex', gap: '20px', flexWrap: 'wrap', flexDirection: "column"}}>
+        <div className="form-item">
+          <label htmlFor="loadIn4bit">4비트 양자화 사용:</label>
+          <input
+            type="checkbox"
+            id="loadIn4bit"
+            checked={loadIn4bit}
+            onChange={(e) => setLoadIn4bit(e.target.checked)}
+          />
+        </div>
+        <div className="form-item">
+          <label htmlFor="bnb4bitComputeDtype">연산 정밀도 (dtype):</label>
+          <select
+            id="bnb4bitComputeDtype"
+            value={bnb4bitComputeDtype}
+            onChange={(e) => setBnb4bitComputeDtype(e.target.value)}
+          >
+            <option value="bfloat16">bfloat16</option>
+            <option value="float16">float16</option>
+            <option value="float32">float32</option>
+          </select>
+        </div>
+        <div className="form-item">
+          <label htmlFor="attnImplementation">어텐션 구현:</label>
+          <select
+            id="attnImplementation"
+            value={attnImplementation}
+            onChange={(e) => setAttnImplementation(e.target.value)}
+          >
+            <option value="eager">eager</option>
+            <option value="flash_attention_2">flash_attention_2</option>
+          </select>
+        </div>
       </div>
 
-      {/* 4. 학습 시작 버튼 및 로그 섹션 */}
+      {/* --- 5. PEFT (LoRA) 설정 섹션 --- */}
+        <h3>5. PEFT (LoRA) 설정</h3>
+        <div style={{display: 'flex', gap: '20px', flexWrap: 'wrap', flexDirection: "column"}}>
+          <div className="form-item">
+            <label htmlFor="loraR">LoRA R 값:</label>
+            <input
+              type="number"
+              id="loraR"
+              value={loraR}
+              onChange={(e) => setLoraR(parseInt(e.target.value) || 1)}
+              min="1"
+            />
+          </div>
+          <div className="form-item">
+            <label htmlFor="loraAlpha">LoRA Alpha:</label>
+            <input
+              type="number"
+              id="loraAlpha"
+              value={loraAlpha}
+              onChange={(e) => setLoraAlpha(parseInt(e.target.value) || 1)}
+              min="1"
+            />
+          </div>
+          <div className="form-item">
+            <label htmlFor="loraDropout">LoRA Dropout:</label>
+            <input
+              type="number"
+              id="loraDropout"
+              step="0.01"
+              value={loraDropout}
+              onChange={(e) => setLoraDropout(parseFloat(e.target.value) || 0)}
+              min="0" max="1"
+            />
+          </div>
+          <div className="form-item">
+            <label htmlFor="loraTargetModules">Target Modules:</label>
+            <input
+              type="text"
+              id="loraTargetModules"
+              value={loraTargetModules}
+              onChange={(e) => setLoraTargetModules(e.target.value)}
+              placeholder="예: all-linear"
+            />
+          </div>
+        </div>
+
+      {/* --- 6. 학습 인자 섹션 --- */}
+      <h3>6. 학습 인자</h3>
+      <div style={{display: 'flex', gap: '20px', flexWrap: 'wrap', flexDirection: "column"}}>
+        <div className="form-item">
+          <label htmlFor="trainBatchSize">배치 크기:</label>
+          <input
+            type="number"
+            id="trainBatchSize"
+            value={trainBatchSize}
+            onChange={(e) => setTrainBatchSize(parseInt(e.target.value) || 1)}
+            min="1"
+          />
+        </div>
+        <div className="form-item">
+          <label htmlFor="gradientAccumulationSteps">그래디언트 누적 스텝:</label>
+          <input
+            type="number"
+            id="gradientAccumulationSteps"
+            value={gradientAccumulationSteps}
+            onChange={(e) => setGradientAccumulationSteps(parseInt(e.target.value) || 1)}
+            min="1"
+          />
+        </div>
+        <div className="form-item">
+          <label htmlFor="numTrainEpochs">에포크 수:</label>
+          <input
+            type="number"
+            id="numTrainEpochs"
+            value={numTrainEpochs}
+            onChange={(e) => setNumTrainEpochs(parseInt(e.target.value) || 1)}
+            min="1"
+          />
+        </div>
+        <div className="form-item">
+          <label htmlFor="learningRate">학습률:</label>
+          <input
+            type="number"
+            id="learningRate"
+            value={learningRate}
+            onChange={(e) => setLearningRate(parseFloat(e.target.value) || 0)}
+            min="0" step="0.00001"
+          />
+        </div>
+        <div className="form-item">
+          <label htmlFor="lrSchedulerType">스케줄러:</label>
+          <select
+            id="lrSchedulerType"
+            value={lrSchedulerType}
+            onChange={(e) => setLrSchedulerType(e.target.value)}
+          >
+            <option value="constant">constant</option>
+            <option value="cosine">cosine</option>
+            <option value="linear">linear</option>
+          </select>
+        </div>
+      </div>
+
+      {/* 7. 학습 시작 버튼 및 로그 섹션 */}
       <div style={{ marginBottom: '30px' }}>
-        <h3>4. 학습 시작</h3>
+        <h3>7. 학습 시작</h3>
         <button
           onClick={handleStartTraining}
           disabled={isLoading}
