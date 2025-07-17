@@ -218,18 +218,21 @@ def train():
 
     peft_model = AutoPeftModelForCausalLM.from_pretrained(
         var_TRAIN_OUTPUT_DIR,
-        torch_dtype=torch.float16 if args.bnb_4bit_compute_dtype == 'float16' else torch.bfloat16, # compute_dtype에 따라 로드 dtype 설정
+        torch_dtype=eval(f"torch.{args.bnb_4bit_compute_dtype}"), # compute_dtype에 따라 로드 dtype 설정
         low_cpu_mem_usage=True,
         device_map="auto",
     )
     merged_model = peft_model.merge_and_unload()
     merged_model.save_pretrained(var_MERGE_OUTPUT_DIR, safe_serialization=True, max_shard_size="2GB")
 
+    tokenizer.save_pretrained(var_MERGE_OUTPUT_DIR)
+
     # 10. 메모리 해제
     del model
     del peft_model
     del trainer
     del merged_model
+    del tokenizer
     torch.cuda.empty_cache()
 
 if __name__ == '__main__':

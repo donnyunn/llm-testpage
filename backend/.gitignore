@@ -108,3 +108,4 @@ venv.bak/
 .idea/*
 
 models_ml/outputs/
+models_ml/data/

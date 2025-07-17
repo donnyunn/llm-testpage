@@ -1,3 +1,4 @@
+// src/components/TextToSQLParams.jsx
 import React, { useState, useEffect } from 'react';
 
 const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
@@ -17,6 +18,7 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
   const [editingIndex, setEditingIndex] = useState(null);
 
   const tableColumns = ['question', 'answer', 'schema'];
+  const FILE_TYPE = "text-to-sql"; // ★★★ 이 컴포넌트의 파일 유형 정의 ★★★
   
   // 학습 파라미터 상태 변수들
   // 1. 성능 최적화
@@ -37,7 +39,6 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
   const [learningRate, setLearningRate] = useState(2e-4);
   const [lrSchedulerType, setLrSchedulerType] = useState('constant');
   const [optim, setOptim] = useState('adamw_torch_fused');
-  // 여기까지
 
   const handleModelIdChange = (event) => {
     setModelId(event.target.value);
@@ -46,7 +47,7 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
   const fetchDataEntries = async () => {
     setIsLoadingData(true);
     try {
-      const response = await fetch(`${fastapiBaseUrl}/data-entries`);
+      const response = await fetch(`${fastapiBaseUrl}/data-entries?file_type=${FILE_TYPE}`);      
       const data = await response.json();
 
       if (response.ok && data.status === 'success') {
@@ -65,7 +66,7 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
 
   useEffect(() => {
     fetchDataEntries();
-  }, []);
+  }, [FILE_TYPE]);
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -89,7 +90,7 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
     formData.append('file', selectedFile);
 
     try {
-      const response = await fetch(`${fastapiBaseUrl}/upload-data`, {
+      const response = await fetch(`${fastapiBaseUrl}/upload-text-to-sql-data`, {
         method: 'POST',
         body: formData,
       });
@@ -115,26 +116,27 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
     console.log('선택된 모델 ID:', modelId);
 
     const trainingParams = {
-      model_id: modelId,
-      system_message: systemMessage,
-      load_in_4bit: loadIn4bit,
-      bnb_4bit_compute_dtype: bnb4bitComputeDtype,
-      attn_implementation: attnImplementation,
-      lora_alpha: loraAlpha,
-      lora_dropout: loraDropout,
-      lora_r: loraR,
-      lora_target_modules: loraTargetModules,
-      train_batch_size: trainBatchSize,
-      gradient_accumulation_steps: gradientAccumulationSteps,
-      num_train_epochs: numTrainEpochs,
-      learning_rate: learningRate,
-      lr_scheduler_type: lrSchedulerType,
-      optim: optim,
+        model_id: modelId,
+        system_message: systemMessage,
+        load_in_4bit: loadIn4bit,
+        bnb_4bit_compute_dtype: bnb4bitComputeDtype,
+        attn_implementation: attnImplementation,
+        lora_alpha: loraAlpha,
+        lora_dropout: loraDropout,
+        lora_r: loraR,
+        lora_target_modules: loraTargetModules,
+        per_device_train_batch_size: trainBatchSize,
+        gradient_accumulation_steps: gradientAccumulationSteps,
+        num_train_epochs: numTrainEpochs,
+        learning_rate: learningRate,
+        lr_scheduler_type: lrSchedulerType,
+        optim: optim,
+        file_type: FILE_TYPE,
     };
     console.log("전송할 학습 파라미터:", trainingParams);
 
     try {
-      const response = await fetch(`${fastapiBaseUrl}/start_training_test` , {
+      const response = await fetch(`${fastapiBaseUrl}/start_training_test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -174,7 +176,7 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
     console.log('데이터 저장 요청:', entryToSave);
 
     const isNew = entryToSave.id === null;
-    const endpoint = isNew ? `${fastapiBaseUrl}/add-data` : `${fastapiBaseUrl}/update-data`;
+    const endpoint = isNew ? `${fastapiBaseUrl}/add-data/${FILE_TYPE}` : `${fastapiBaseUrl}/update-data/${FILE_TYPE}`;    
     const requestBody = isNew ? { question: entryToSave.question, answer: entryToSave.answer, schema: entryToSave.schema } : entryToSave;
 
     try {
@@ -204,7 +206,7 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
     console.log('데이터 삭제 요청:', entryToDelete);
 
     try {
-      const response = await fetch(`${fastapiBaseUrl}/delete-data`, {
+      const response = await fetch(`${fastapiBaseUrl}/delete-data/${FILE_TYPE}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -240,27 +242,31 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
           <h4>모델 선택</h4>
           <label htmlFor="model-id">어떤 모델로 학습할지 선택 (Model ID):</label>
           <input
-              type="text"
-              id="model-id"
-              value={modelId} // modelId state와 입력 필드를 연결합니다.
-              onChange={handleModelIdChange} // 입력 값이 변경될 때 state를 업데이트합니다.
-              placeholder="예: google/gemma-7b-it"
-              style={{ width: '300px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+            type="text"
+            id="model-id"
+            value={modelId}
+            onChange={handleModelIdChange}
+            placeholder="예: google/gemma-7b-it"
+            style={{ width: '300px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
           />
         </div>
-          <h4>시스템 메시지</h4>
-          <p>AI 모델의 역할을 정의하는 메시지를 입력하세요. `{'{schema}'}`는 자동으로 대체됩니다.</p>
-          <textarea
-            value={systemMessage}
-            onChange={(e) => setSystemMessage(e.target.value)}
-            rows="5"
-            style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
-          />
+      </div>
+      
+      {/* 2. 시스템 메시지 입력 UI */}
+      <div style={{ marginTop: '20px', marginBottom: '20px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
+        <h3>2. 시스템 메시지 설정</h3>
+        <p>AI 모델의 역할을 정의하는 메시지를 입력하세요. `{'{schema}'}`는 자동으로 대체됩니다.</p>
+        <textarea
+          value={systemMessage}
+          onChange={(e) => setSystemMessage(e.target.value)}
+          rows="5"
+          style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+        />
       </div>
 
-      {/* 2. 데이터 업로드 섹션 추가 */}
-      <h3>2. 학습 데이터 업로드</h3>
-      <p>학습에 사용할 .xlsx 파일을 업로드하세요. (헤더: question, answer, schema)</p>
+      {/* 3. 학습 데이터 업로드 섹션 */}
+      <h3>3. 학습 데이터 업로드</h3>
+      <p>학습에 사용할 .xlsx 파일을 업로드하세요. (헤더: id, question, answer, schema)</p>
       <input
         type="file"
         accept=".xlsx"
@@ -376,39 +382,39 @@ const TextToSQLParamsView = ({ fastapiBaseUrl }) => {
         </div>
       </div>
 
-      {/* --- 5. PEFT (LoRA) 설정 섹션 --- */}
-        <h3>5. PEFT (LoRA) 설정</h3>
-        <div style={{display: 'flex', gap: '20px', flexWrap: 'wrap', flexDirection: "column"}}>
-          <div className="form-item">
-            <label htmlFor="loraR">LoRA R 값:</label>
-            <input
-              type="number"
-              id="loraR"
-              value={loraR}
-              onChange={(e) => setLoraR(parseInt(e.target.value) || 1)}
-              min="1"
-            />
-          </div>
-          <div className="form-item">
-            <label htmlFor="loraAlpha">LoRA Alpha:</label>
-            <input
-              type="number"
-              id="loraAlpha"
-              value={loraAlpha}
-              onChange={(e) => setLoraAlpha(parseInt(e.target.value) || 1)}
-              min="1"
-            />
-          </div>
-          <div className="form-item">
-            <label htmlFor="loraDropout">LoRA Dropout:</label>
-            <input
-              type="number"
-              id="loraDropout"
-              step="0.01"
-              value={loraDropout}
-              onChange={(e) => setLoraDropout(parseFloat(e.target.value) || 0)}
-              min="0" max="1"
-            />
+      {/* --- 6. PEFT (LoRA) 설정 섹션 --- */}
+      <h3>6. PEFT (LoRA) 설정</h3>
+      <div style={{display: 'flex', gap: '20px', flexWrap: 'wrap', flexDirection: "column"}}>
+        <div className="form-item">
+          <label htmlFor="loraR">LoRA R 값:</label>
+          <input
+            type="number"
+            id="loraR"
+            value={loraR}
+            onChange={(e) => setLoraR(parseInt(e.target.value) || 1)}
+            min="1"
+          />
+        </div>
+        <div className="form-item">
+          <label htmlFor="loraAlpha">LoRA Alpha:</label>
+          <input
+            type="number"
+            id="loraAlpha"
+            value={loraAlpha}
+            onChange={(e) => setLoraAlpha(parseInt(e.target.value) || 1)}
+            min="1"
+          />
+        </div>
+        <div className="form-item">
+          <label htmlFor="loraDropout">LoRA Dropout:</label>
+          <input
+            type="number"
+            id="loraDropout"
+            step="0.01"
+            value={loraDropout}
+            onChange={(e) => setLoraDropout(parseFloat(e.target.value) || 0)}
+            min="0" max="1"
+          />
           </div>
           <div className="form-item">
             <label htmlFor="loraTargetModules">Target Modules:</label>
